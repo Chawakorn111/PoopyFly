@@ -17,7 +17,7 @@ import { IntegrityPanel } from "./components/IntegrityPanel";
 
 // Preference order. Only the ones whose manifest actually exists are offered, so
 // hosting a subset (e.g. just partial_100000) works without editing this list.
-const MODES: SimMode[] = ["partial_100000", "core", "partial_50000", "partial_10000", "debug", "full"];
+const MODES: SimMode[] = ["core", "partial_100000", "partial_50000", "partial_10000", "debug", "full"];
 type Tab = "learning" | "experiments" | "debugger" | "neuropil" | "benchmark" | "integrity";
 
 function useAvailableModes(): SimMode[] | null {
@@ -65,7 +65,7 @@ function LoadingPanel({ mode, manifest, log }: { mode: SimMode; manifest: Manife
 export default function App() {
   const available = useAvailableModes();
   const modes = available ?? MODES;
-  const [mode, setMode] = useState<SimMode>("partial_100000");
+  const [mode, setMode] = useState<SimMode>("core");
   const { state, api } = useSimulator(mode);
   const [tab, setTab] = useState<Tab>("learning");
   const [location, setLocation] = useState<SceneLocation>("nyc");

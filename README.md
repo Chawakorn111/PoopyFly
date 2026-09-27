@@ -113,8 +113,8 @@ and the **Integrity** tab in the app.
 | `debug` | 3,000 | 340,857 | 7 MB |
 | `partial_10000` | 10,000 | 1,741,608 | 35 MB |
 | `partial_50000` | 50,000 | 11,103,313 | 224 MB |
-| **`partial_100000`** ← recommended | **100,000** | **19,716,276** | **399 MB** |
-| `core` — the genuine MaleCNS neuron connectome | **165,650** | **25,552,591** | 518 MB |
+| `partial_100000` — fast interactive subset | 100,000 | 19,716,276 | 399 MB |
+| **`core`** ← default — the genuine MaleCNS neuron connectome | **165,650** | **25,552,591** | **518 MB** |
 | `full` — all segments (not only neurons) | **1,745,204** | **32,751,675** | 730 MB |
 
 `core` reproduces the published edge count (25.55M ≈ 25.6M) — it *is* the annotated MaleCNS neuron
@@ -122,9 +122,10 @@ graph: 165,650 of the 166,700 official neurons have at least one edge at minconf
 every segment in the edge list, **not** an all-neuron graph. The app always shows **measured**
 counts.
 
-**Which mode to use:** `partial_100000` is the default — real hub topology, runs at ~600 ticks/s,
-and poops reliably. `full` carries the most bodies but is sparsely wired and sits near 0.03× real
-time; it is a validation scale, not an interactive one.
+**Which mode to use:** `core` is the default — the complete annotated neuron connectome
+(165,650 of the 166,700 official neurons). `partial_100000` is the lighter, faster interactive
+subset and a single click away in the dataset picker. `full` carries the most bodies but is
+sparsely wired and sits near 0.03× real time; it is a validation scale, not an interactive one.
 
 ---
 

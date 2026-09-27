@@ -70,12 +70,13 @@ Six real subgraphs of the same connectome, switchable live from the HUD. Every n
 | `debug` | 3,000 | 340,857 | 113.6 | 7 MB |
 | `partial_10000` | 10,000 | 1,741,608 | 174.2 | 35 MB |
 | `partial_50000` | 50,000 | 11,103,313 | 222.1 | 224 MB |
-| **`partial_100000`** ← default | **100,000** | **19,716,276** | **197.2** | **399 MB** |
-| `core` — annotated neurons | 165,650 | 25,552,591 | 154.3 | 518 MB |
+| `partial_100000` — fast subset | 100,000 | 19,716,276 | 197.2 | 399 MB |
+| **`core`** ← default — annotated neurons | **165,650** | **25,552,591** | **154.3** | **518 MB** |
 | `full` — all segments, not only neurons | 1,745,204 | 32,751,675 | 18.8 | 730 MB |
 
-`partial_100000` is the default: it carries real hub topology, poops reliably, and runs at
-**~600 ticks/s** — comfortable for interactive use, where `full` sits near 0.03× real time.
+`core` is the default: the complete annotated neuron connectome (165,650 neurons). `partial_100000`
+is the lighter interactive subset — real hub topology at **~600 ticks/s** — where `full` sits near
+0.03× real time.
 
 ### One connectome, six very different dynamical regimes
 
