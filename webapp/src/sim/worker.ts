@@ -60,7 +60,10 @@ function mergeConfig(patch: Partial<SimConfig>) {
 }
 
 async function loadGraph(base: string, mode: string, man: Manifest): Promise<GraphData> {
-  const u = (n: string) => `${base}/data/${mode}/${n}`;
+  // Cache-bust by build: every rebuild changes generated_at, so a stale CDN or
+  // browser copy of a graph file can never be mixed with a newer manifest.
+  const v = encodeURIComponent(man.generated_at || "0");
+  const u = (n: string) => `${base}/data/${mode}/${n}?v=${v}`;
   const N = man.neurons, E = man.edges;
   // The graph is up to ~300 MB; report per-file progress so a long download is
   // visibly progressing rather than looking like a hang.
@@ -100,7 +103,7 @@ let reverseReady = false;
 async function ensureReverseGraph(): Promise<boolean> {
   if (reverseReady) return true;
   if (!kernel || !currentBase || !currentMode) return false;
-  const u = (n: string) => `${currentBase}/data/${currentMode}/${n}`;
+  const u = (n: string) => `${currentBase}/data/${currentMode}/${n}?v=${encodeURIComponent(manifest?.generated_at || "0")}`;
   post({ type: "log", msg: "loading reverse graph (needed for plasticity / incoming edges) ..." });
   try {
     let done = 0;

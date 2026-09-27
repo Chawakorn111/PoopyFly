@@ -26,13 +26,15 @@ export interface SimClientCallbacks {
 
 
 export async function fetchManifest(mode: SimMode): Promise<Manifest> {
-  const r = await fetch(`${DATA_BASE}/data/${mode}/manifest.json`);
+  // Bypass CDN/browser caches: the manifest is tiny, and a stale manifest mixed
+  // with fresh graph binaries breaks the N/E consistency check in the worker.
+  const r = await fetch(`${DATA_BASE}/data/${mode}/manifest.json?t=${Date.now()}`, { cache: "no-store" });
   if (!r.ok) throw new Error(`manifest ${mode}: ${r.status}`);
   return await r.json();
 }
 
-export async function fetchPositions(mode: SimMode, n: number): Promise<Float32Array> {
-  const r = await fetch(`${DATA_BASE}/data/${mode}/neurons.pos.f32.bin`);
+export async function fetchPositions(mode: SimMode, n: number, version = "0"): Promise<Float32Array> {
+  const r = await fetch(`${DATA_BASE}/data/${mode}/neurons.pos.f32.bin?v=${encodeURIComponent(version)}`);
   if (!r.ok) throw new Error(`positions ${mode}: ${r.status}`);
   const buf = await r.arrayBuffer();
   const arr = new Float32Array(buf);
@@ -44,8 +46,9 @@ export interface NeuronArrays {
   pos: Float32Array; nt: Uint8Array; region: Uint16Array; bodyIds: BigInt64Array;
   inDeg: Int32Array; outDeg: Int32Array;
 }
-export async function fetchNeuronArrays(mode: SimMode, n: number): Promise<NeuronArrays> {
-  const b = (f: string) => fetch(`${DATA_BASE}/data/${mode}/${f}`).then((r) => r.arrayBuffer());
+export async function fetchNeuronArrays(mode: SimMode, n: number, version = "0"): Promise<NeuronArrays> {
+  const v = encodeURIComponent(version);
+  const b = (f: string) => fetch(`${DATA_BASE}/data/${mode}/${f}?v=${v}`).then((r) => r.arrayBuffer());
   const [pos, nt, region, bodyId, deg] = await Promise.all([
     b("neurons.pos.f32.bin"), b("neurons.nt.u8.bin"), b("neurons.region.u16.bin"),
     b("neurons.bodyid.i64.bin"), b("neurons.deg.i32.bin"),

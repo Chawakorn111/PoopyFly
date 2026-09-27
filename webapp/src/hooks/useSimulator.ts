@@ -41,7 +41,7 @@ export function useSimulator(mode: SimMode) {
         const host = document.getElementById("brain-host");
         if (!host) { setState((s) => ({ ...s, loading: false, ready: true })); return; }
         const v = new BrainView(host, man.neurons, man.nt_names, man.region_names);
-        fetchNeuronArrays(m, man.neurons).then((a) => {
+        fetchNeuronArrays(m, man.neurons, man.generated_at).then((a) => {
           if (gen !== genRef.current) { v.dispose(); return; }
           v.setData(a.pos, a.nt, a.region);
           if (viewRef.current) viewRef.current.dispose();
