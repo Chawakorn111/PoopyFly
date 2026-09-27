@@ -1,0 +1,3 @@
+# The processed connectome binaries are ~1.8 GB and are hosted separately
+# (object storage). Never upload them to Vercel as source or build output.
+public/data

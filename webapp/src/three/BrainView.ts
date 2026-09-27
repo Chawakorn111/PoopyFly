@@ -19,6 +19,9 @@ const NT_COLORS: Record<string, [number, number, number]> = {
 
 export type ColorMode = "nt" | "region";
 
+// how many animation frames a spike stays visible before it fades out
+const AGE_FRAMES = 90;
+
 interface ActivePool {
   pos: Float32Array; // capacity*3
   age: Float32Array; // capacity
@@ -94,7 +97,7 @@ export class BrainView {
     geo.setAttribute("color", colAttr);
     this.colorBase = colAttr;
     // FAINT skeleton: the connectome is barely visible so real spikes can shine.
-    const mat = new THREE.PointsMaterial({ size: 0.5, vertexColors: true, transparent: true, opacity: 0.13, sizeAttenuation: true, depthWrite: false });
+    const mat = new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, opacity: 0.34, sizeAttenuation: true, depthWrite: false });
     this.base = new THREE.Points(geo, mat);
     this.scene.add(this.base);
 
@@ -104,18 +107,24 @@ export class BrainView {
     const ageGeo = new THREE.BufferGeometry();
     ageGeo.setAttribute("position", new THREE.BufferAttribute(this.pool.pos, 3));
     ageGeo.setAttribute("age", ageAttr);
+    // Per-spike colour: the neuron's OWN palette colour, deepened when it fires,
+    // so activity reads as "this region is lighting up" rather than white sparks.
+    const actCol = new THREE.BufferAttribute(new Float32Array(this.maxActive * 3), 3);
+    ageGeo.setAttribute("color", actCol);
     ageGeo.setDrawRange(0, 0);
-    // BRIGHT activity: big warm additive sparks, drawn on top (no depth test).
-    const ageMat = new THREE.PointsMaterial({ color: 0xfff1c4, size: 6.2, transparent: true, opacity: 1, sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false });
+    const ageMat = new THREE.PointsMaterial({ vertexColors: true, size: 2.4, transparent: true, opacity: 1, sizeAttenuation: true, depthWrite: false, depthTest: false });
     this.active = new THREE.Points(ageGeo, ageMat);
     this.ageAttr = ageAttr;
     this.ageGeo = ageGeo;
+    this.activeCol = actCol;
     this.posAttr = ageGeo.getAttribute("position") as THREE.BufferAttribute;
     this.scene.add(this.active);
     this.applyColorMode(this.colorMode);
   }
 
   private colorBase!: THREE.BufferAttribute;
+  private activeCol!: THREE.BufferAttribute;
+  private activeColors = new Float32Array(0);   // neuron -> deepened colour
   private ageAttr!: THREE.BufferAttribute;
   private posAttr!: THREE.BufferAttribute;
   private ageGeo!: THREE.BufferGeometry;
@@ -129,17 +138,23 @@ export class BrainView {
     if (!this.colorBase) return;
     const c = this.colorBase.array as Float32Array;
     const n = this.n;
+    if (this.activeColors.length !== n * 3) this.activeColors = new Float32Array(n * 3);
+    const a = this.activeColors;
     if (mode === "nt") {
       for (let i = 0; i < n; i++) {
         const col = NT_COLORS[this.ntNames[this.ntCodes[i]]] ?? NT_COLORS.UNKNOWN;
-        c[3 * i] = col[0]; c[3 * i + 1] = col[1]; c[3 * i + 2] = col[2];
+        c[3 * i] = col[0] * 0.55; c[3 * i + 1] = col[1] * 0.55; c[3 * i + 2] = col[2] * 0.55;
+        const deep = deepen(col);
+        a[3 * i] = deep[0]; a[3 * i + 1] = deep[1]; a[3 * i + 2] = deep[2];
       }
     } else {
       const R = Math.max(1, this.regionNames.length);
       for (let i = 0; i < n; i++) {
         const h = (this.regions[i] / R);
-        const col = hslToRgb(h, 0.7, 0.55);
+        const col = hslToRgb(h, 0.55, 0.42);          // dim base
         c[3 * i] = col[0]; c[3 * i + 1] = col[1]; c[3 * i + 2] = col[2];
+        const deep = hslToRgb(h, 1.0, 0.56);          // firing: same hue, fully saturated
+        a[3 * i] = deep[0]; a[3 * i + 1] = deep[1]; a[3 * i + 2] = deep[2];
       }
     }
     this.colorBase.needsUpdate = true;
@@ -149,6 +164,8 @@ export class BrainView {
   onSpikes(spikes: Int32Array) {
     const pool = this.pool;
     const norm = this.norm;
+    const actCol = this.activeCol.array as Float32Array;
+    const table = this.activeColors;
     let count = pool.count;
     for (let k = 0; k < spikes.length; k++) {
       if (count >= this.maxActive) break;
@@ -159,6 +176,9 @@ export class BrainView {
       pool.pos[3 * count + 1] = norm[j + 1];
       pool.pos[3 * count + 2] = norm[j + 2];
       pool.age[count] = 0;
+      actCol[3 * count] = table[j];
+      actCol[3 * count + 1] = table[j + 1];
+      actCol[3 * count + 2] = table[j + 2];
       count++;
     }
     pool.count = count;
@@ -170,11 +190,13 @@ export class BrainView {
       const pool = this.pool;
       let count = pool.count;
       const age = pool.age, pos = pool.pos;
+      const actCol = this.activeCol.array as Float32Array;
       let w = 0;
       for (let i = 0; i < count; i++) {
         age[i] += 1;
-        if (age[i] < 90) {
+        if (age[i] < AGE_FRAMES) {
           pos[3 * w] = pos[3 * i]; pos[3 * w + 1] = pos[3 * i + 1]; pos[3 * w + 2] = pos[3 * i + 2];
+          actCol[3 * w] = actCol[3 * i]; actCol[3 * w + 1] = actCol[3 * i + 1]; actCol[3 * w + 2] = actCol[3 * i + 2];
           age[w] = age[i];
           w++;
         }
@@ -182,6 +204,7 @@ export class BrainView {
       pool.count = w;
       this.ageGeo.setDrawRange(0, w);
       this.ageAttr.needsUpdate = true;
+      this.activeCol.needsUpdate = true;
       this.posAttr.needsUpdate = true;
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
@@ -198,6 +221,22 @@ export class BrainView {
     this.renderer.dispose();
     this.scene.traverse((o) => { const p = o as any; if (p.geometry) p.geometry.dispose(); if (p.material) p.material.dispose(); });
   }
+}
+
+// Push a palette colour toward its fully saturated, deeper form so a firing
+// neuron reads as a richer version of its own colour (never a white spark).
+function deepen(rgb: [number, number, number]): [number, number, number] {
+  const [r, g, b] = rgb;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  const mid = (r + g + b) / 3;
+  if (mx - mn < 1e-4) {
+    const v = Math.min(1, mid * 0.8 + 0.2);
+    return [v, v, v];
+  }
+  let out = [r, g, b].map((c) => mid + (c - mid) * 1.85);
+  const m = Math.max(out[0], out[1], out[2]);
+  if (m > 0.9) out = out.map((c) => c * (0.9 / m));
+  return out.map((c) => Math.min(1, Math.max(0, c))) as [number, number, number];
 }
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {

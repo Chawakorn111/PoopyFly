@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSimulator } from "./hooks/useSimulator";
 import { MODE_LABELS, type SimMode } from "./sim/protocol";
+import { DATA_BASE } from "./sim/client";
 import { VitalsPanel } from "./components/VitalsPanel";
 import { BehaviorPanel } from "./components/BehaviorPanel";
 import { MusicPanel } from "./components/MusicPanel";
@@ -14,16 +15,44 @@ import { RegionPanel } from "./components/RegionPanel";
 import { BenchmarkPanel } from "./components/BenchmarkPanel";
 import { IntegrityPanel } from "./components/IntegrityPanel";
 
-const MODES: SimMode[] = ["full", "core", "partial_100000", "partial_50000", "partial_10000", "debug"];
+// Preference order. Only the ones whose manifest actually exists are offered, so
+// hosting a subset (e.g. just partial_100000) works without editing this list.
+const MODES: SimMode[] = ["partial_100000", "core", "partial_50000", "partial_10000", "debug", "full"];
 type Tab = "learning" | "experiments" | "debugger" | "neuropil" | "benchmark" | "integrity";
 
+function useAvailableModes(): SimMode[] | null {
+  const [available, setAvailable] = useState<SimMode[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    Promise.all(MODES.map(async (m) => {
+      try {
+        const r = await fetch(`${DATA_BASE}/data/${m}/manifest.json`);
+        return r.ok ? m : null;
+      } catch { return null; }
+    })).then((found) => {
+      if (!alive) return;
+      const ok = found.filter((x): x is SimMode => x !== null);
+      setAvailable(ok.length ? ok : MODES);
+    });
+    return () => { alive = false; };
+  }, []);
+  return available;
+}
+
 export default function App() {
-  const [mode, setMode] = useState<SimMode>("full");
+  const available = useAvailableModes();
+  const modes = available ?? MODES;
+  const [mode, setMode] = useState<SimMode>("partial_100000");
   const { state, api } = useSimulator(mode);
   const [tab, setTab] = useState<Tab>("learning");
   const [location, setLocation] = useState<SceneLocation>("nyc");
   const m = state.manifest;
   const snap = state.snap;
+
+  // if the preferred default isn't hosted, drop to the best available one
+  useEffect(() => {
+    if (available && available.length && !available.includes(mode)) setMode(available[0]);
+  }, [available, mode]);
 
   return (
     <div className="app meme">
@@ -57,7 +86,7 @@ export default function App() {
           <div className="minihead">
             <label className="modelabel">dataset</label>
             <select className="modeselect" value={mode} onChange={(e) => setMode(e.target.value as SimMode)} title={MODE_LABELS[mode]}>
-              {MODES.map((x) => <option key={x} value={x}>{MODE_LABELS[x]}</option>)}
+              {modes.map((x) => <option key={x} value={x}>{MODE_LABELS[x]}</option>)}
             </select>
             <div className="hudstat"><b>{state.running ? "LIVE" : "PAUSED"}</b><span>sim</span></div>
             <div className="hudstat"><b>{state.stats ? Math.round(state.stats.spikesPerSec).toLocaleString() : "0"}</b><span>spikes/s</span></div>

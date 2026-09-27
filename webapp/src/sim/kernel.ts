@@ -92,6 +92,11 @@ export class Kernel {
   // derived constants
   private dtOverTau: number;
   private synDecay: number;          // per-tick leak of the synaptic current
+  // Dataset calibration: the loaded graphs are different subsets of the same
+  // connectome and differ hugely in synapses-per-neuron (mean in-degree x mean
+  // weight). This factor is set once at load so a neuron's TOTAL synaptic drive
+  // is comparable across datasets, instead of the sparsest graphs going silent.
+  private gainScale = 1;
   private refTicks: number;
   private ntEffect: Float32Array = new Float32Array(NT_NAMES.length);
 
@@ -190,6 +195,10 @@ export class Kernel {
       this.ntEffect[i] = v === undefined ? 0.5 : v;
     }
   }
+
+  /** Dataset calibration factor applied to every synapse (see gainScale). */
+  setGainScale(g: number) { this.gainScale = g > 0 && Number.isFinite(g) ? g : 1; }
+  getGainScale() { return this.gainScale; }
 
   setConfig(cfg: SimConfig) {
     const delayChanged = cfg.lif.delayMs !== this.cfg.lif.delayMs || cfg.lif.dt !== this.cfg.lif.dt;
@@ -385,9 +394,9 @@ export class Kernel {
       const i = buf[s];
       if (disabled[i]) continue;
       const eff = ntEff[ntCode[i]];
-      if (eff === 0) continue;
-      const start = indptr[i], end = indptr[i + 1];
-      const wsc = ws * eff;
+        if (eff === 0) continue;
+        const start = indptr[i], end = indptr[i + 1];
+        const wsc = ws * eff * this.gainScale;
       if (delta) {
         for (let k = start; k < end; k++) {
           const j = indices[k];

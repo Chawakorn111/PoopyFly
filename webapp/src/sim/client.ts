@@ -7,7 +7,10 @@ import type {
 } from "./protocol";
 import { DEFAULT_CONFIG } from "./protocol";
 
-export const DATA_BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+// Where the processed connectome binaries are served from. Defaults to the
+// app's own origin (public/data during dev). Set VITE_DATA_BASE to host the
+// ~1.8 GB of graphs on object storage instead of shipping them with the app.
+export const DATA_BASE = (import.meta.env.VITE_DATA_BASE || import.meta.env.BASE_URL || "/").replace(/\/$/, "");
 
 export interface SimClientCallbacks {
   onReady?(manifest: Manifest, memoryBytes: number, loadSeconds: number): void;

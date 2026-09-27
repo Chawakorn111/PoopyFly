@@ -82,6 +82,21 @@ async function loadGraph(base: string, mode: string, man: Manifest): Promise<Gra
   return g;
 }
 
+// Mean synapses-per-neuron (mean in-degree x mean edge weight) measures how much
+// total synaptic drive a typical neuron can receive. The dataset subsets differ
+// by ~20x on this number, so we calibrate the per-synapse gain to a reference
+// operating point; without it the sparse graphs (FULL+) never reach threshold.
+// Only ever boosts (never weakens) a dataset that is already excitable.
+const REF_MEAN_IN_WEIGHT = 520;   // where the tuned DEFAULT_CONFIG weightScale runs healthy
+function calibrationGain(g: GraphData): number {
+  if (g.N === 0 || g.E === 0) return 1;
+  let sum = 0;
+  for (let k = 0; k < g.E; k++) sum += g.baseW[k];
+  const meanInWeight = (g.E / g.N) * (sum / g.E);
+  if (!(meanInWeight > 0)) return 1;
+  return Math.max(1, REF_MEAN_IN_WEIGHT / meanInWeight);
+}
+
 function buildStats(wallMs: number, ticks: number, spikes: number): FrameStats {
   const k = kernel!;
   const dt = config.lif.dt;
@@ -140,6 +155,9 @@ async function handleInit(msg: Extract<MainToWorker, { type: "init" }>) {
   post({ type: "log", msg: `loading ${msg.mode}: ${manifest.neurons} neurons, ${manifest.edges} edges ...` });
   const g = await loadGraph(msg.baseUrl, msg.mode, manifest);
   kernel = new Kernel(g, config, manifest.populations, manifest.region_names);
+  const gain = calibrationGain(g);
+  kernel.setGainScale(gain);
+  if (gain !== 1) post({ type: "log", msg: `dataset calibration: per-synapse gain x${gain.toFixed(2)} (sparse connectome subset)` });
   agent = new Agent(kernel, config, { N: g.N, outDeg: g.outDeg, inDeg: g.inDeg, ntCode: g.ntCode });
   loadSeconds = (performance.now() - t0) / 1000;
   post({ type: "log", msg: `populations wired: ${Object.keys(agent.pop.actions).length} motor pools, ${Object.keys(agent.pop.drives).length} drive channels, ${agent.pop.da.length} DA-modulated neurons` });
