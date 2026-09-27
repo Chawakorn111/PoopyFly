@@ -9,7 +9,7 @@ export const MODE_LABELS: Record<SimMode, string> = {
   partial_50000: "PARTIAL 50k",
   partial_100000: "PARTIAL 100k",
   core: "FULL — MaleCNS neurons",
-  full: "FULL+ — all validated bodies",
+  full: "FULL+ — all segments (not only neurons)",
 };
 
 // ---------------------------------------------------------------------------

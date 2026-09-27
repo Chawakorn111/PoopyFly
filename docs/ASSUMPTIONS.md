@@ -22,15 +22,17 @@ configurable at runtime and defaults are documented.
   `syn-partners` (loaded selectively, never in bulk to the browser).
 
 ### Data caveats (measured, reported in-app)
-- The provided `connectome-weights` is **anomalous vs the published MaleCNS v1.0**:
-  151.9M raw edges, 78.4% with `body_post` ids present in **no** other file. We
-  keep only edges whose both endpoints are authoritative (T-bar) bodies.
-- `body-annotations` and `body-neurotransmitters` are **missing**; neurotransmitters
-  are derived from `tbar-neurotransmitters`, regions from `tbar` `primary`.
-- The id space splits into a small-id neuron regime (244,657; `core` graph) and a
-  large-id regime (1.59M bodies, likely fragments). `core` (241,304 neurons /
-  26.3M edges) reproduces the published MaleCNS edge count and is the recommended
-  whole-neuron-brain view; `full` (1.75M/32.75M) is the maximal validated graph.
+- The provided files are the **official Janelia/GCS MaleCNS v1.0 release** (connectome MD5
+  matches). The official `connectome-weights` is the **full segment graph** ("all segments in the
+  dataset"): 151.9M raw edges over 1.83M T-bar segments and many unannotated postsynaptic
+  fragments. We keep edges whose both endpoints are segments in the `tbar-neurotransmitters`
+  table (32.75M edges).
+- **Neuron membership comes from the official `body-annotations`** (`superclass` present = neuron;
+  166,700 bodies, matching FlyWire Codex). `core` is those neurons (165,650 with ≥1 validated
+  edge / 25.55M edges) and reproduces the published MaleCNS edge count; `full` (1.75M / 32.75M)
+  is every segment and is **not** an all-neuron graph.
+- Neurotransmitters are derived from `tbar-neurotransmitters` (prob-averaged per neuron);
+  `body-neurotransmitters` is present and available for future aggregation refinements.
 
 ## 2. ASSUMED / MODELLED (computational, configurable)
 

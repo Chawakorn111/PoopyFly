@@ -67,12 +67,12 @@ Six real subgraphs of the same connectome, switchable live from the HUD. Every n
 
 | mode | neurons | connections | mean degree | runtime |
 |---|---:|---:|---:|---:|
-| `debug` | 3,000 | 341,602 | 113.9 | 7 MB |
-| `partial_10000` | 10,000 | 1,734,277 | 173.4 | 35 MB |
-| `partial_50000` | 50,000 | 11,092,947 | 221.9 | 224 MB |
-| **`partial_100000`** ← default | **100,000** | **19,693,793** | **196.9** | **398 MB** |
-| `core` | 241,304 | 26,309,803 | 109.0 | 537 MB |
-| `full` | 1,745,204 | 32,751,675 | 18.8 | 730 MB |
+| `debug` | 3,000 | 340,857 | 113.6 | 7 MB |
+| `partial_10000` | 10,000 | 1,741,608 | 174.2 | 35 MB |
+| `partial_50000` | 50,000 | 11,103,313 | 222.1 | 224 MB |
+| **`partial_100000`** ← default | **100,000** | **19,716,276** | **197.2** | **399 MB** |
+| `core` — annotated neurons | 165,650 | 25,552,591 | 154.3 | 518 MB |
+| `full` — all segments, not only neurons | 1,745,204 | 32,751,675 | 18.8 | 730 MB |
 
 `partial_100000` is the default: it carries real hub topology, poops reliably, and runs at
 **~600 ticks/s** — comfortable for interactive use, where `full` sits near 0.03× real time.
@@ -84,9 +84,9 @@ same per-synapse gain leaves the sparsest graphs silent:
 
 | mode | synapses / neuron |
 |---|---:|
-| `partial_10000` | 1,526 |
-| `partial_100000` | 983 |
-| `core` | 519 |
+| `partial_10000` | 1,504 |
+| `partial_100000` | 986 |
+| `core` | 749 |
 | `full` | **77** |
 
 The worker measures this at load and applies a one-time **calibration gain** so a neuron's *total*
@@ -217,7 +217,7 @@ Or via the dashboard: **Project → Settings → Environment Variables →
 You don't have to host all six modes. The app **probes which manifests exist** at startup and only
 offers those in the dataset picker, so hosting any subset works with no code changes.
 
-Keeping just `partial_100000` is **380 MB** — a much smaller upload than the full 1.8 GB, while
+Keeping just `partial_100000` is **399 MB** — a much smaller upload than the full 1.8 GB, while
 still carrying real hub topology:
 
 ```bash
@@ -282,12 +282,16 @@ behaviour changes because the *simulation* changed.
 
 ## Data integrity
 
-The provided `connectome-weights` is **anomalous** relative to published MaleCNS v1.0
-(~166,700 neurons / ~25.6M edges). Measured from the actual files:
+The provided `.feather` files are the **official Janelia/GCS MaleCNS v1.0 release** — the
+`connectome-weights` MD5 matches the published object exactly. That official file is the **full
+segment graph** ("all segments in the dataset"), so it contains far more than the 166,700 annotated
+neurons; measured:
 
-- **151.9 M** raw edges, of which **78.4 %** have `body_post` ids that appear in no other file
-- Edges are kept **only when both endpoints are authoritative bodies** → 32.75 M valid edges
-- Neuron and connection counts shown in the UI are **measured**, never the published figures
+- **151.9 M** raw edges over **1.83 M** T-bar segments; **32.75 M** edges have both endpoints in
+  the T-bar segment set (the graph this pipeline exports)
+- **166,700** official neurons come from `body-annotations` (`superclass` present); the `core`
+  graph is those neurons (165,650 with ≥1 validated edge)
+- Neuron and connection counts shown in the UI are **measured**, never published round figures
 
 The **Integrity** tab reports this per dataset rather than hiding it. If the browser can't run a
 mode in real time, that's shown too — the graph is never silently reduced.

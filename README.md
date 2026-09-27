@@ -21,7 +21,7 @@ rates** on the real connectome, in a Web Worker, in your browser.
 
 ![PoopFly running: the fly perched on the toilet in New York, the live motor-population readout, the music panel and the brain view](docs/media/poopfly.gif)
 
-*The real UI at `partial_100000` — 100,000 neurons, 19,693,793 synapses. The fly picks `EAT` here from
+*The real UI at `partial_100000` — 100,000 neurons, 19,716,276 synapses. The fly picks `EAT` here from
 its own motor readout while the brain view shows the spiking network behind it.*
 
 ---
@@ -76,48 +76,54 @@ The renderer is a **view**. It never produces activity.
 
 ---
 
-## Important data-integrity finding (read first)
+## Data verification & neuron counts (read first)
 
-The `.feather` files **in this folder do not match the published MaleCNS v1.0 release**. This is
-reported honestly, never hidden:
+The `.feather` files in this folder are the **official Janelia/GCS MaleCNS v1.0 release**, verified
+byte-for-byte: the provided `connectome-weights` MD5 matches the published object exactly. An
+earlier version of this project misread the official file as corrupt — that reading was wrong, and
+this section replaces it.
 
-| | Published MaleCNS v1.0 | Measured in the provided files |
-|---|---:|---:|
-| connectome edges | ~25,582,938 | **151,856,684** raw |
-| unique `body_pre` | ~166,700 | **1,834,661** (= T-bar bodies exactly) |
-| unique `body_post` | ~166,700 | **87,576,984** |
-| edges with a valid `body_post` | — | only **32,751,675** (21.6%) |
+What the official files actually contain (measured):
 
-- `body-annotations` and `body-neurotransmitters` (referenced by the brief) are **not present** —
-  only `connectome-weights`, `tbar-neurotransmitters`, `syn-partners`, `syn-points` exist here.
-- Every `body_pre` is a real body, but **78.4% of edges point at `body_post` ids that exist in no
-  other file** (spurious/corrupt targets). The id space splits into two regimes separated by a
-  100× empty gap: small ids `10001–959576` (244,657 bodies — the coherent neurons) and large ids
-  `~1e8–1.57e9` (1.59M bodies — almost certainly unmerged fragments). All ids fit in int32.
+| | Value | Note |
+|---|---:|---|
+| `connectome-weights` rows | **151,856,684** | documented as "connection strengths for all segments in the dataset" |
+| segments with T-bars | **1,834,661** | every `body_pre` is one of these |
+| distinct `body_post` segments | **87,576,984** | most are unannotated fragments |
+| edges between two T-bar segments | **32,751,675** | the graph this pipeline exports |
+| official annotated neurons | **166,700** | `body-annotations` rows with a `superclass` (matches FlyWire Codex) |
+| neurons with ≥1 validated edge | **165,650** | the `core` graph |
+
+- The official connectome-weights is the **full segment graph, not a neuron-only graph** — it
+  includes unmerged fragments, glia and other unannotated segments (which appear in the official
+  `tbar` and `syn-partners` tables too).
+- `body-annotations` and `body-neurotransmitters` **are present** here (from the official
+  [download page](https://male-cns.janelia.org/download/)); the pipeline reads `body-annotations`
+  (`superclass` present) as the authoritative neuron set.
 
 **How the pipeline handles it (no silent discarding):** edges are kept only when *both* endpoints
-are authoritative bodies (the T-bar set). It exports real graphs and reports, per mode, the exact
-measured counts and everything it filtered — see `webapp/public/data/build_summary.json` and the
-**Integrity** tab in the app.
+are segments of the T-bar set; a body counts as a neuron only with the official `superclass`
+annotation. Everything filtered is reported per mode — see `webapp/public/data/build_summary.json`
+and the **Integrity** tab in the app.
 
-### Recovered graphs (measured, never theoretical)
+### Exported graphs (measured, never theoretical)
 
 | mode | neurons | connections | on disk |
 |---|---:|---:|---:|
-| `debug` | 3,000 | 341,602 | 7 MB |
-| `partial_10000` | 10,000 | 1,734,277 | 34 MB |
-| `partial_50000` | 50,000 | 11,092,947 | 214 MB |
-| **`partial_100000`** ← recommended | **100,000** | **19,693,793** | **380 MB** |
-| `core` — genuine neuron connectome | **241,304** | **26,309,803** | 512 MB |
-| `full` — all validated bodies | **1,745,204** | **32,751,675** | 696 MB |
+| `debug` | 3,000 | 340,857 | 7 MB |
+| `partial_10000` | 10,000 | 1,741,608 | 35 MB |
+| `partial_50000` | 50,000 | 11,103,313 | 224 MB |
+| **`partial_100000`** ← recommended | **100,000** | **19,716,276** | **399 MB** |
+| `core` — the genuine MaleCNS neuron connectome | **165,650** | **25,552,591** | 518 MB |
+| `full` — all segments (not only neurons) | **1,745,204** | **32,751,675** | 730 MB |
 
-`core` (the small-id neuron regime) reproduces the published edge count (26.3M ≈ 25.6M) — it *is*
-the MaleCNS neuron graph. The pipeline is fully data-driven: drop in a clean official
-`connectome-weights` file, re-run, and it will emit the genuine 166,700-neuron graph automatically.
-The app always shows **measured** counts.
+`core` reproduces the published edge count (25.55M ≈ 25.6M) — it *is* the annotated MaleCNS neuron
+graph: 165,650 of the 166,700 official neurons have at least one edge at minconf 0.5. `full` is
+every segment in the edge list, **not** an all-neuron graph. The app always shows **measured**
+counts.
 
 **Which mode to use:** `partial_100000` is the default — real hub topology, runs at ~600 ticks/s,
-and poops reliably. `full` carries the most neurons but is sparsely wired and sits near 0.03× real
+and poops reliably. `full` carries the most bodies but is sparsely wired and sits near 0.03× real
 time; it is a validation scale, not an interactive one.
 
 ---
@@ -236,8 +242,8 @@ The app is 771 KB; the connectome is 1.8 GB. Deploying means deciding where that
 
 - **Vercel + object storage** — app on Vercel, graphs on Cloudflare R2, pointed at with
   `VITE_DATA_BASE`. Full walkthrough in **[webapp/README.md](webapp/README.md#deployment-vercel)**.
-- **GitHub-only** — `partial_100000` (380 MB, largest file 75 MB) fits GitHub's 100 MB per-file
-  limit and Vercel's limits better than the other modes. `core` and `full` have 100–125 MB files
+- **GitHub-only** — `partial_100000` (399 MB, largest file 79 MB) fits GitHub's 100 MB per-file
+  limit and Vercel's limits better than the other modes. `core` and `full` have 102–131 MB files
   and are **rejected** by GitHub.
 
 The app probes which manifests actually exist at startup and only offers those modes, so hosting
