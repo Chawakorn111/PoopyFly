@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSimulator } from "./hooks/useSimulator";
-import { MODE_LABELS, type SimMode } from "./sim/protocol";
+import { MODE_LABELS, type Manifest, type SimMode } from "./sim/protocol";
 import { DATA_BASE } from "./sim/client";
 import { VitalsPanel } from "./components/VitalsPanel";
 import { BehaviorPanel } from "./components/BehaviorPanel";
@@ -37,6 +37,29 @@ function useAvailableModes(): SimMode[] | null {
     return () => { alive = false; };
   }, []);
   return available;
+}
+
+// A live elapsed counter + the worker's last log line, so a slow load is
+// distinguishable from a dead one.
+function LoadingPanel({ mode, manifest, log }: { mode: SimMode; manifest: Manifest | null; log: string[] }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const last = log.length ? log[log.length - 1] : null;
+  return (
+    <div className="loading">
+      <div className="spinner" />
+      <div className="ltitle">loading <b>{MODE_LABELS[mode]}</b> · {secs}s</div>
+      <div className="lsub">
+        {manifest
+          ? `${manifest.neurons.toLocaleString()} neurons · ${manifest.edges.toLocaleString()} synapses`
+          : "fetching manifest…"}
+      </div>
+      {last && <div className="llog">{last}</div>}
+    </div>
+  );
 }
 
 export default function App() {
@@ -93,13 +116,7 @@ export default function App() {
             <div className="hudstat"><b>{state.stats ? state.stats.realTimeFactor.toFixed(2) + "×" : "—"}</b><span>rt</span></div>
           </div>
           <div className="brainsmall" id="brain-host">
-            {!state.ready && !state.error && (
-              <div className="loading">
-                <div className="spinner" />
-                <div className="ltitle">loading <b>{MODE_LABELS[mode]}</b></div>
-                <div className="lsub">{m ? m.neurons.toLocaleString() : ""} neurons · {m ? m.edges.toLocaleString() : ""} synapses</div>
-              </div>
-            )}
+            {!state.ready && !state.error && <LoadingPanel mode={mode} manifest={m} log={state.log} />}
             {state.error && <div className="loading err">{state.error}</div>}
           </div>
           <div className="minibehav"><BehaviorPanel state={state} /></div>

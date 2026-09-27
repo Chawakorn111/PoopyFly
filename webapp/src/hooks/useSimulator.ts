@@ -68,7 +68,16 @@ export function useSimulator(mode: SimMode) {
     };
     const c = new SimClient(cb);
     clientRef.current = c;
-    await c.init(m, config);
+    // init() fetches the manifest on the main thread; if that fails there is no
+    // worker to report it, so surface it here instead of hanging on "loading".
+    try {
+      await c.init(m, config);
+    } catch (e) {
+      if (gen === genRef.current) {
+        setState((s) => ({ ...s, error: `could not load ${m}: ${e instanceof Error ? e.message : String(e)}`, loading: false, ready: false }));
+      }
+      return;
+    }
     if (statsTimer.current) clearInterval(statsTimer.current);
     // snapshot is pushed to React at ~10 Hz (spikes already go straight to the renderer)
     statsTimer.current = window.setInterval(() => {

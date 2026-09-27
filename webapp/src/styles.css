@@ -179,6 +179,11 @@ input:focus-visible, select:focus-visible, button:focus-visible {
 .loading.err { color: var(--err); padding: 20px; }
 .loading .ltitle b { color: var(--accent); }
 .loading .lsub { font-size: 11px; color: var(--dimmer); }
+.loading .llog {
+  font-size: 10.5px; color: var(--dim); max-width: 280px;
+  border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px;
+  word-break: break-word; line-height: 1.6;
+}
 .spinner {
   width: 34px; height: 34px; border-radius: 50%;
   border: 3px solid #1c2a40; border-top-color: var(--accent2);
