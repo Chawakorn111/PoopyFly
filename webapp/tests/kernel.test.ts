@@ -79,3 +79,24 @@ describe("Determinism", () => {
     expect(run()).toBe(run());
   });
 });
+
+describe("Lazy reverse graph", () => {
+  it("is inert until attached, then enables incoming edges and post-side plasticity", () => {
+    const g = makeGraph(Int32Array.from([0, 1]), Int32Array.from([1, 0]), Float32Array.from([4, 4]), 2);
+    const indptrR = g.indptrR!, indicesR = g.indicesR!, rev2fwd = g.rev2fwd!;
+    // simulate the worker path: the forward graph arrives without the reverse half
+    delete g.indptrR; delete g.indicesR; delete g.rev2fwd;
+
+    const c = testConfig({});
+    c.deterministic = false; c.plasticity.enabled = true; c.plasticity.mode = "three";
+    const k = new Kernel(g, c, NOPOPS, ["UNKNOWN"]);
+
+    expect(k.reverseReady()).toBe(false);
+    expect(k.connections(0, "in", 8)).toEqual([]);      // nothing to walk yet
+    k.queueSpike(0); k.step();                           // must not throw
+
+    k.setReverseGraph(indptrR, indicesR, rev2fwd);
+    expect(k.reverseReady()).toBe(true);
+    expect(k.connections(0, "in", 8).length).toBeGreaterThan(0);
+  });
+});

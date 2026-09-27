@@ -66,7 +66,6 @@ async function loadGraph(base: string, mode: string, man: Manifest): Promise<Gra
   // visibly progressing rather than looking like a hang.
   const files = [
     "graph.indptr.u32.bin", "graph.indices.i32.bin", "graph.weights.f32.bin",
-    "graph_r.indptr.u32.bin", "graph_r.indices.i32.bin", "graph_r.rev2fwd.i32.bin",
     "neurons.bodyid.i64.bin", "neurons.nt.u8.bin", "neurons.region.u16.bin", "neurons.deg.i32.bin",
   ];
   let done = 0;
@@ -76,7 +75,7 @@ async function loadGraph(base: string, mode: string, man: Manifest): Promise<Gra
     post({ type: "log", msg: `downloading ${done}/${files.length} · ${n}` });
     return b;
   };
-  const [indptr, indices, weights, indptrR, indicesR, rev2fwd, bodyid, nt, region, deg] =
+  const [indptr, indices, weights, bodyid, nt, region, deg] =
     await Promise.all(files.map(one));
   const degArr = new Int32Array(deg);
   const inDeg = new Int32Array(N), outDeg = new Int32Array(N);
@@ -84,11 +83,42 @@ async function loadGraph(base: string, mode: string, man: Manifest): Promise<Gra
   const g: GraphData = {
     N, E,
     indptr: new Uint32Array(indptr), indices: new Int32Array(indices), baseW: new Float32Array(weights),
-    indptrR: new Uint32Array(indptrR), indicesR: new Int32Array(indicesR), rev2fwd: new Int32Array(rev2fwd),
     ntCode: new Uint8Array(nt), region: new Uint16Array(region), bodyIds: new BigInt64Array(bodyid), inDeg, outDeg,
   };
   if (g.indptr[N] !== E) throw new Error(`indptr[N]=${g.indptr[N]} != E=${E}`);
   return g;
+}
+
+const REVERSE_FILES = ["graph_r.indptr.u32.bin", "graph_r.indices.i32.bin", "graph_r.rev2fwd.i32.bin"];
+let currentBase = "";
+let currentMode = "";
+let reverseReady = false;
+
+// The reverse graph is ~half the download and is only needed for post-side
+// plasticity and incoming-edge tracing, neither of which is used on startup.
+// Fetch it the moment something actually asks for it.
+async function ensureReverseGraph(): Promise<boolean> {
+  if (reverseReady) return true;
+  if (!kernel || !currentBase || !currentMode) return false;
+  const u = (n: string) => `${currentBase}/data/${currentMode}/${n}`;
+  post({ type: "log", msg: "loading reverse graph (needed for plasticity / incoming edges) ..." });
+  try {
+    let done = 0;
+    const one = async (n: string) => {
+      const b = await fetchBuf(u(n));
+      done++;
+      post({ type: "log", msg: `reverse graph ${done}/${REVERSE_FILES.length} · ${n}` });
+      return b;
+    };
+    const [ipR, ixR, r2f] = await Promise.all(REVERSE_FILES.map(one));
+    kernel.setReverseGraph(new Uint32Array(ipR), new Int32Array(ixR), new Int32Array(r2f));
+    reverseReady = true;
+    post({ type: "log", msg: "reverse graph ready" });
+    return true;
+  } catch (e) {
+    post({ type: "log", msg: `reverse graph failed: ${e instanceof Error ? e.message : String(e)}` });
+    return false;
+  }
 }
 
 // Mean synapses-per-neuron (mean in-degree x mean edge weight) measures how much
@@ -160,6 +190,7 @@ function runFrame() {
 async function handleInit(msg: Extract<MainToWorker, { type: "init" }>) {
   const t0 = performance.now();
   manifest = msg.manifest;
+  currentBase = msg.baseUrl; currentMode = msg.mode; reverseReady = false;
   mergeConfig(msg.config);
   post({ type: "log", msg: `loading ${msg.mode}: ${manifest.neurons} neurons, ${manifest.edges} edges ...` });
   const g = await loadGraph(msg.baseUrl, msg.mode, manifest);
@@ -181,15 +212,24 @@ ctx.onmessage = async (e) => {
       case "start": if (agent) { running = true; scheduleFrame(); } break;
       case "stop": running = false; if (frameTimer) clearTimeout(frameTimer); break;
       case "step": if (agent) { running = false; if (frameTimer) clearTimeout(frameTimer); const r = runTicks(msg.n); emitFrame(msg.n, r.spikes, r.wall, r.buf, r.count); } break;
-      case "setConfig": if (kernel) { mergeConfig(msg.config); kernel.setConfig(config); } break;
+      // Anything that needs the reverse graph pulls it in first, so plasticity
+      // and incoming-edge tracing are never silently half-wired.
+      case "setConfig": if (kernel) { if (msg.config.plasticity?.enabled) await ensureReverseGraph(); mergeConfig(msg.config); kernel.setConfig(config); } break;
       case "setSpeed": config.ticksPerFrame = msg.ticksPerFrame; break;
       case "inject": if (kernel) kernel.inject(msg.digit); break;
       case "reset": if (agent) { agent.k.reset(); agent.resetWorld(0); post({ type: "log", msg: "simulation + world reset" }); } break;
       case "resetWorld": if (agent) { agent.resetWorld(config.physio.contentStart); agent.resetMetrics(); post({ type: "log", msg: "world reset" }); } break;
       case "forceEat": if (agent) { agent.w.content = Math.min(1, agent.w.content + msg.amount); post({ type: "log", msg: `force-fed gut_content +${msg.amount}` }); } break;
-      case "setPlasticity": if (agent) { mergeConfig({ plasticity: { ...config.plasticity, enabled: msg.on, mode: msg.mode ?? "three" } }); if (msg.on) mergeConfig({ deterministic: false }); kernel!.setConfig(config); post({ type: "log", msg: `plasticity ${msg.on ? "ON" : "OFF"} (${config.plasticity.mode})` }); } break;
+      case "setPlasticity": if (agent) {
+        if (msg.on) await ensureReverseGraph();
+        mergeConfig({ plasticity: { ...config.plasticity, enabled: msg.on, mode: msg.mode ?? "three" } });
+        if (msg.on) mergeConfig({ deterministic: false });
+        kernel!.setConfig(config);
+        post({ type: "log", msg: `plasticity ${msg.on ? "ON" : "OFF"} (${config.plasticity.mode})` });
+      } break;
       case "runExperiment": if (agent) {
         running = false; if (frameTimer) clearTimeout(frameTimer);
+        await ensureReverseGraph();   // every experiment toggles plasticity internally
         const result = agent.runExperiment(msg.id, msg.trials);
         post({ type: "experiment", result });
         post({ type: "log", msg: `experiment ${msg.id} done` });
@@ -200,7 +240,10 @@ ctx.onmessage = async (e) => {
         post({ type: "log", msg: `ablated ${msg.kind} ${msg.value}; disabled=${kernel.disabledCount()}` });
       } break;
       case "restore": if (kernel) { kernel.restore(); post({ type: "log", msg: "ablation cleared" }); } break;
-      case "queryConnections": if (kernel) post({ type: "connections", index: msg.index, direction: msg.direction, partners: kernel.connections(msg.index, msg.direction, msg.limit) }); break;
+      case "queryConnections": if (kernel) {
+        if (msg.direction === "in") await ensureReverseGraph();
+        post({ type: "connections", index: msg.index, direction: msg.direction, partners: kernel.connections(msg.index, msg.direction, msg.limit) });
+      } break;
       case "benchmark": if (agent) {
         running = false; if (frameTimer) clearTimeout(frameTimer);
         agent.k.reset(); agent.resetWorld(0.85);

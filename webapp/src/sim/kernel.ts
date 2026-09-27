@@ -26,9 +26,12 @@ export interface GraphData {
   indptr: Uint32Array;
   indices: Int32Array;
   baseW: Float32Array;     // immutable MaleCNS weight
-  indptrR: Uint32Array;
-  indicesR: Int32Array;
-  rev2fwd: Int32Array;     // CSC slot -> CSR slot (for post-side STDP)
+  // Reverse (CSC) graph: only needed for post-side plasticity and for tracing
+  // incoming edges. It is roughly half the download, so it is optional and
+  // attached on demand via Kernel.setReverseGraph().
+  indptrR?: Uint32Array;
+  indicesR?: Int32Array;
+  rev2fwd?: Int32Array;    // CSC slot -> CSR slot (for post-side STDP)
   ntCode: Uint8Array;
   region: Uint16Array;
   bodyIds: BigInt64Array;
@@ -97,6 +100,11 @@ export class Kernel {
   // weight). This factor is set once at load so a neuron's TOTAL synaptic drive
   // is comparable across datasets, instead of the sparsest graphs going silent.
   private gainScale = 1;
+  // reverse graph, attached on demand (see GraphData.indptrR)
+  private indptrR: Uint32Array = new Uint32Array(0);
+  private indicesR: Int32Array = new Int32Array(0);
+  private rev2fwd: Int32Array = new Int32Array(0);
+  private revReady = false;
   private refTicks: number;
   private ntEffect: Float32Array = new Float32Array(NT_NAMES.length);
 
@@ -150,6 +158,9 @@ export class Kernel {
 
   constructor(g: GraphData, cfg: SimConfig, pops: Populations, regionNames: string[]) {
     this.g = g; this.N = g.N; this.E = g.E; this.cfg = cfg;
+    // Attach the reverse graph now if the caller supplied it; otherwise the
+    // worker streams it in later with setReverseGraph().
+    if (g.indptrR && g.indicesR && g.rev2fwd) this.setReverseGraph(g.indptrR, g.indicesR, g.rev2fwd);
     this.regionNames = regionNames;
     const N = g.N;
     this.V = new Float32Array(N);
@@ -200,6 +211,13 @@ export class Kernel {
   setGainScale(g: number) { this.gainScale = g > 0 && Number.isFinite(g) ? g : 1; }
   getGainScale() { return this.gainScale; }
 
+  /** Attach the reverse (CSC) graph once it has been fetched. */
+  setReverseGraph(indptrR: Uint32Array, indicesR: Int32Array, rev2fwd: Int32Array) {
+    this.indptrR = indptrR; this.indicesR = indicesR; this.rev2fwd = rev2fwd;
+    this.revReady = indptrR.length > 0 && indicesR.length > 0;
+  }
+  reverseReady() { return this.revReady; }
+
   setConfig(cfg: SimConfig) {
     const delayChanged = cfg.lif.delayMs !== this.cfg.lif.delayMs || cfg.lif.dt !== this.cfg.lif.dt;
     const popChanged = cfg.input.populationSize !== this.cfg.input.populationSize;
@@ -213,7 +231,9 @@ export class Kernel {
   }
 
   private plasticityOn(): boolean {
-    return this.cfg.plasticity.enabled && !this.cfg.deterministic;
+    // Post-side eligibility needs the reverse graph; until it is attached the
+    // plasticity rules are inert rather than silently half-applied.
+    return this.cfg.plasticity.enabled && !this.cfg.deterministic && this.revReady;
   }
   private stdpOn(): boolean { return this.plasticityOn() && this.cfg.plasticity.mode === "stdp"; }
   private threeOn(): boolean { return this.plasticityOn() && this.cfg.plasticity.mode === "three"; }
@@ -507,7 +527,7 @@ export class Kernel {
       }
     }
     // POST side: i fired; look at incoming edges, potentiate if pre fired just before.
-    const { indptrR, indicesR, rev2fwd } = this.g;
+    const indptrR = this.indptrR, indicesR = this.indicesR, rev2fwd = this.rev2fwd;
     const r0 = indptrR[i], r1 = indptrR[i + 1];
     for (let c = r0; c < r1; c++) {
       const srcI = indicesR[c];
@@ -606,10 +626,11 @@ export class Kernel {
           nt: NT_NAMES[this.g.ntCode[i]] ?? "?", region: this.regionNames[this.g.region[j]] ?? "?" });
       }
     } else {
-      const s0 = this.g.indptrR[i], s1 = this.g.indptrR[i + 1];
+      if (!this.revReady) return out;   // reverse graph not loaded yet
+      const s0 = this.indptrR[i], s1 = this.indptrR[i + 1];
       for (let c = s0; c < s1 && out.length < limit; c++) {
-        const j = this.g.indicesR[c];
-        const k = this.g.rev2fwd[c];
+        const j = this.indicesR[c];
+        const k = this.rev2fwd[c];
         out.push({ index: j, bodyId: String(this.g.bodyIds[j]), weight: this.g.baseW[k],
           nt: NT_NAMES[this.g.ntCode[j]] ?? "?", region: this.regionNames[this.g.region[j]] ?? "?" });
       }
@@ -678,7 +699,8 @@ export class Kernel {
   // raise eligibility for synapses on both sides of a spiking neuron (co-activity trace)
   private raiseElig(i: number) {
     const elig = this.ensureElig(); const touched = this.touched!;
-    const { indptr, indptrR, rev2fwd } = this.g;
+    const { indptr } = this.g;
+    const indptrR = this.indptrR, rev2fwd = this.rev2fwd;
     const { preAmp, postAmp, eligCap } = this.cfg.plasticity;
     const s0 = indptr[i], s1 = indptr[i + 1];
     for (let k = s0; k < s1; k++) this.markElig(k, preAmp, elig, touched, eligCap);
@@ -748,7 +770,7 @@ export class Kernel {
   totalSpikes(): number { let s = 0; for (let i = 0; i < this.N; i++) s += this.spikeCount[i]; return s; }
   approxMemoryBytes(): number {
     let b = this.g.indptr.byteLength + this.g.indices.byteLength + this.g.baseW.byteLength
-      + this.g.indptrR.byteLength + this.g.indicesR.byteLength + this.g.rev2fwd.byteLength
+        + this.indptrR.byteLength + this.indicesR.byteLength + this.rev2fwd.byteLength
       + this.g.ntCode.byteLength + this.g.region.byteLength + this.g.bodyIds.byteLength
       + this.g.inDeg.byteLength + this.g.outDeg.byteLength;
     b += this.V.byteLength + this.Isyn.byteLength + this.refracUntil.byteLength
