@@ -62,13 +62,22 @@ function mergeConfig(patch: Partial<SimConfig>) {
 async function loadGraph(base: string, mode: string, man: Manifest): Promise<GraphData> {
   const u = (n: string) => `${base}/data/${mode}/${n}`;
   const N = man.neurons, E = man.edges;
+  // The graph is up to ~300 MB; report per-file progress so a long download is
+  // visibly progressing rather than looking like a hang.
+  const files = [
+    "graph.indptr.u32.bin", "graph.indices.i32.bin", "graph.weights.f32.bin",
+    "graph_r.indptr.u32.bin", "graph_r.indices.i32.bin", "graph_r.rev2fwd.i32.bin",
+    "neurons.bodyid.i64.bin", "neurons.nt.u8.bin", "neurons.region.u16.bin", "neurons.deg.i32.bin",
+  ];
+  let done = 0;
+  const one = async (n: string) => {
+    const b = await fetchBuf(u(n));
+    done++;
+    post({ type: "log", msg: `downloading ${done}/${files.length} · ${n}` });
+    return b;
+  };
   const [indptr, indices, weights, indptrR, indicesR, rev2fwd, bodyid, nt, region, deg] =
-    await Promise.all([
-      fetchBuf(u("graph.indptr.u32.bin")), fetchBuf(u("graph.indices.i32.bin")), fetchBuf(u("graph.weights.f32.bin")),
-      fetchBuf(u("graph_r.indptr.u32.bin")), fetchBuf(u("graph_r.indices.i32.bin")), fetchBuf(u("graph_r.rev2fwd.i32.bin")),
-      fetchBuf(u("neurons.bodyid.i64.bin")), fetchBuf(u("neurons.nt.u8.bin")), fetchBuf(u("neurons.region.u16.bin")),
-      fetchBuf(u("neurons.deg.i32.bin")),
-    ]);
+    await Promise.all(files.map(one));
   const degArr = new Int32Array(deg);
   const inDeg = new Int32Array(N), outDeg = new Int32Array(N);
   for (let i = 0; i < N; i++) { inDeg[i] = degArr[2 * i]; outDeg[i] = degArr[2 * i + 1]; }
