@@ -37,14 +37,14 @@ configurable at runtime and defaults are documented.
 | Thing | Assumption | Where |
 |---|---|---|
 | Neuron model | Leaky Integrate-and-Fire point neuron. **Does not** reproduce real ion-channel/biophysical dynamics. | `kernel.ts`, `DEFAULT_CONFIG.lif` |
-| LIF params | `vRest -60, vThresh -45, vReset -60, tauM 10 ms, tRef 2 ms, dt 0.1 ms` mV — biologically motivated defaults for fly CNS LIF, fully editable. | config |
-| Synapse->conductance | `effective = (baseW + delta) * weightScale * ntEffect[sourceNT]`. `weightScale` (default 0.08) turns a synapse count into mV of drive. | config |
-| Synaptic kinetics | Simple exponential-ish per-tick current injection into `Isyn`; no AMPA/NMDA/GABA-A receptor kinetics. | kernel |
+| LIF params | `vRest -60, vThresh -46, vReset -60, tauM 8 ms, tauSyn 8 ms, tRef 2.5 ms, dt 0.1 ms` mV — biologically motivated defaults for fly CNS LIF, fully editable. | config |
+| Synapse->conductance | `effective = (baseW + delta) * weightScale * ntEffect[sourceNT]`. `weightScale` (default 0.05) turns a synapse count into mV of drive, and is calibrated per dataset so a neuron's total drive is comparable across graph subsets. | config |
+| Synaptic kinetics | Synaptic current **leaks with `tauSyn`** rather than resetting each tick, so convergent input summated across the synaptic window brings a neuron to threshold. No AMPA/NMDA/GABA-A receptor kinetics. | kernel |
 | Transmission delay | Single global configurable `delayMs` (default 1 ms), quantised to `dt`, via a ring buffer. **Not** per-synapse axonal conduction delays. | config / ring |
 | NT -> effect map | `ACh +1, Glu +1` excitatory; `GABA -1, HA -1` inhibitory; `DA +0.3, 5HT +0.2, OA +0.2` modulatory-as-weak-bias; `UNKNOWN +0.5`. **This is a coarse mapping, NOT a receptor-level model.** | `DEFAULT_CONFIG.ntEffect` |
 | Input encoding | 6 -> `INPUT_6`, 7 -> `INPUT_7` (real high-in-degree hub neurons, split deterministically) driven as a Poisson spike source (rate/duration/latency/jitter configurable). MaleCNS has no native "digit" neurons; population choice is a modelling choice. | `pipeline select_populations`, `kernel.inject` |
 | Output readout | Decision = `argmax` of exponentially-weighted firing rates of `READOUT_6` vs `READOUT_7`, with a `NO_ACTION` rate threshold. Computed purely from network activity over a window — no input/output shortcut. | `kernel.getReadout` |
-| Plasticity | Optional symmetric nearest-neighbour STDP on a per-edge learned `delta` (never written to `baseW`). OFF by default; deterministic mode forces it off. | `kernel.stdp` |
+| Plasticity | Optional three-factor rule (eligibility × dopamine) on a per-edge learned `delta` (never written to `baseW`); an STDP mode is also available. OFF by default; deterministic mode forces it off. | `kernel.stepPlasticity` |
 | Region aggregation | Neuropil = per-neuron region label; activity = real spikes / active-neurons / rate aggregated by that label. Mean-membrane-by-region is O(N) only on demand. | `kernel.computeRegions` |
 | Coordinates | 3D positions = per-neuron centroid of its T-bar sites. Rendered for visualisation only. | pipeline / BrainView |
 
