@@ -1,0 +1,9 @@
+# large raw + intermediate data (never commit)
+/*.feather
+/data/_cache/
+/webapp/public/data/
+/webapp/dist/
+/webapp/node_modules/
+__pycache__/
+*.pyc
+_inspect_result.json
