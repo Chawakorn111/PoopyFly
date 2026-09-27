@@ -16,8 +16,10 @@ populations. Nothing about the poop is scripted.
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Vite" src="https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white">
   <img alt="Three.js" src="https://img.shields.io/badge/three.js-0.169-000000?style=flat-square&logo=three.js&logoColor=white">
-  <img alt="Vitest" src="https://img.shields.io/badge/tests-25%20passing-6E9F18?style=flat-square&logo=vitest&logoColor=white">
+  <img alt="Vitest" src="https://img.shields.io/badge/tests-26%20passing-6E9F18?style=flat-square&logo=vitest&logoColor=white">
 </p>
+
+![PoopFly running: the fly perched on the toilet in New York, the live motor-population readout, the music panel and the brain view](../docs/media/poopfly.gif)
 
 ---
 
@@ -299,7 +301,7 @@ npm test
 ```
 
 ```
-✓ tests/kernel.test.ts     (6)   LIF dynamics, delays, plasticity, ablation
+✓ tests/kernel.test.ts     (7)   LIF dynamics, delays, plasticity, ablation, lazy reverse graph
 ✓ tests/graph.test.ts     (10)   CSR/CSC integrity, reversed-graph mapping
 ✓ tests/poopfly.test.ts    (9)   closed loop: neural decisions, reward, determinism
 ```
